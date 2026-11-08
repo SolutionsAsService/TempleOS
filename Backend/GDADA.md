@@ -42,4 +42,4 @@ A claim about a gate is written with the gate's number and what produced it. "Wo
 3. ~~Give games an unattended test entry~~ done for ThirdTemple: `Tests/Auto.HC` + `tests.fail_counter` in its manifest (host-checked only).
 4. Lift the generic parts of ThirdTemple (`Palette`, `Dialogue`, `Save`, the input loop, `Audio`) into `Lib/`.
 5. A second game in the registry, to prove the backend is not shaped to one game.
-6. Turn the manager into a skill (`gdada`) that reads `games.json`, evaluates the gates, and prints the next step.
+6. ~~Turn the manager into a skill~~ done in `SolutionsAsService/gdada` (`registry.json`, `scripts/gdada_next.mjs`, gates G0-G5). This file now holds only the backend-side view.
