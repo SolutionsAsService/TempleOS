@@ -1,0 +1,16 @@
+{
+  "note": "The registry GDADA manages. One row per game. 'repo' is where the game lives; the backend never copies a game in.",
+  "backend": { "version": "0.1.0", "runtime_verified": false },
+  "games": [
+    {
+      "id": "the-holy-temple",
+      "repo": "SolutionsAsService/ThirdTemple",
+      "branch": "main",
+      "stage": "prototype",
+      "host_check": "pass",
+      "compiled_in_templeos": false,
+      "tests_run_in_templeos": false,
+      "next": "boot a TempleOS image and compile Run.HC"
+    }
+  ]
+}

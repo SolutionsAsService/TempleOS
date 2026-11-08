@@ -1,0 +1,4 @@
+*.iso
+*.serial.log
+*.scratch.img
+.stage-*
