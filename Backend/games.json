@@ -1,6 +1,9 @@
 {
   "note": "The registry GDADA manages. One row per game. 'repo' is where the game lives; the backend never copies a game in.",
-  "backend": { "version": "0.1.0", "runtime_verified": false },
+  "backend": {
+    "version": "0.1.0",
+    "runtime_verified": false
+  },
   "games": [
     {
       "id": "the-holy-temple",
@@ -10,7 +13,8 @@
       "host_check": "pass",
       "compiled_in_templeos": false,
       "tests_run_in_templeos": false,
-      "next": "boot a TempleOS image and compile Run.HC"
+      "next": "boot a TempleOS image and compile Run.HC",
+      "note": "v0.2.0: 12 maps, 9 people; host check pass (22 files, 2909 lines); still never compiled in TempleOS"
     }
   ]
 }
