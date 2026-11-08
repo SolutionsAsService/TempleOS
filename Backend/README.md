@@ -46,8 +46,7 @@ letter `Mount` reports).
 
 ## Known limits
 
-- Tests that wait for a key (ThirdTemple's `T2Keys`) cannot finish headless. `gamec run` needs an unattended test
-  entry; adding one is on the GDADA list.
+- Tests that wait for a key (ThirdTemple's `T2Keys`) cannot finish headless; `Tests/Auto.HC` leaves them out and `tests.templeos_auto` points at it.
 - The disc carries `.HC .HH .DD .TXT .DAT` only, with names in 8.3.
 - The boot ISO is not in this repository. The upstream tree here is source; booting it needs the ISO, which the
   compiler in this tree cannot produce without already running TempleOS.

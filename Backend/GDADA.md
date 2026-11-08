@@ -39,7 +39,7 @@ A claim about a gate is written with the gate's number and what produced it. "Wo
 1. **G0:** obtain a TempleOS V5.03 boot ISO. The sandbox cannot reach templeos.org or archive.org, so the person
    supplies it (as a file in a repo release or a path), or the environment allows the host.
 2. Run `gamec run` for ThirdTemple; fix compile errors it reports; flip `compiled_in_templeos` in `games.json`.
-3. Give games an unattended test entry (`Tests/Auto.HC`) so G3 can run headless.
+3. ~~Give games an unattended test entry~~ done for ThirdTemple: `Tests/Auto.HC` + `tests.fail_counter` in its manifest (host-checked only).
 4. Lift the generic parts of ThirdTemple (`Palette`, `Dialogue`, `Save`, the input loop, `Audio`) into `Lib/`.
 5. A second game in the registry, to prove the backend is not shaped to one game.
 6. Turn the manager into a skill (`gdada`) that reads `games.json`, evaluates the gates, and prints the next step.
