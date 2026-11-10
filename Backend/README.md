@@ -24,6 +24,8 @@ instead of a place you type into.
 | `gamec check` | works; ThirdTemple 61 files PASS (adds: lone `$`, `continue`) |
 | `gamec build` | works; a 64 MB MBR + FAT32 image that TempleOS V5.03 mounts as `C:` (2026-11-10) |
 | `gamec run` | **works** (2026-11-10, TempleOS V5.03 live CD, QEMU 8.2 TCG, no KVM): boot to verdict in about 70 s; ThirdTemple's `Load.HC` compiles in about 45 s and `Tests/Auto` passes (T3 FILE, T4 MEM, TWORLD) |
+| `gamec dist` | **works** (2026-11-10): installs TempleOS V5.03 from the ISO with its own installer (cached), adds the game, an auto-start `~/Once.HC` and a no-menu MBR; `run.sh`, `run.bat`, README, zip. ThirdTemple's bundle boots to its title in about 60 s (TCG) with nothing typed |
+| `gamec play` | **works**: boots a bundle with its own `run.sh` headless and drives a play script; ThirdTemple's `tools/dist_test.play` proves title, save, power-off, continue, quit to the shell |
 | `Lib/Host.HC` (serial log) | compiled and run by TempleOS: `HostLog`, `HostDone`, `HostDocDump` reach `serial.log` |
 
 Why a hard disk and not a CD: V5.03 reads files only from RedSea and FAT32 (`FSt_ISO9660` is "Not Supported";
@@ -49,6 +51,32 @@ node Backend/tools/gamec.mjs run   ../ThirdTemple out/temple.img --tos TempleOS.
 #   --play ../ThirdTemple/tools/shots.play
 ```
 
+### Release bundles: `gamec dist` and `gamec play`
+
+```
+node Backend/tools/gamec.mjs dist ../ThirdTemple ../ThirdTemple/dist --tos TempleOS.ISO \
+     --readme ../ThirdTemple/tools/make_dist.README.txt --notice ../ThirdTemple/NOTICE
+node Backend/tools/gamec.mjs play ../ThirdTemple ../ThirdTemple/dist/HolyTemple-0.2.0 --script ../ThirdTemple/tools/dist_test.play --shots out/shots
+```
+
+`dist` writes `<dist>/<Name>-<version>/` and `<Name>-<version>.zip`:
+- `<Name>.img`: TempleOS installed by its own installer (`::/Misc/OSInstall.HC`, the VM path: C: and D:, FAT32), driven
+  through the monitor once per ISO and cached in `~/.cache/gamec` (`--cache`, `--reinstall`, `--hd-mb`). The game goes
+  into `C:/Home/<Name>` and `C:/Home/Backend` with mtools; `C:/Home/Once.HC` (run by the first terminal at every boot,
+  `HomeSys.HC`) includes the game's `launch` line. TempleOS's master boot loader waits at "Selection:" forever, so the
+  MBR code (not the partition table) is replaced by `tools/mbr.asm` (boots partition 1 like TempleOS's stage 2).
+- `<Name>-install.img`: the `build` disk without AUTOTEST; its `INSTALL.HC` runs the game's own `INSTALL.HC` if it has one.
+- `run.sh` (Linux/macOS: KVM if usable, else TCG; first audio backend QEMU has for the PC speaker; gtk/cocoa window),
+  `run.bat` (Windows), `README.txt` (`--readme`, with `{{TITLE}} {{VERSION}} {{NAME}} {{LAUNCH}}`), `TEMPLEOS.txt`
+  (the public-domain statement), `--notice` copied as `.txt`.
+
+`play` copies `run.sh` and the image to `<dist>/.play/bundle`, starts it with `-display none` and a monitor socket, and
+runs a script (`tosvm.mjs` `runPlay`): `waitscreen`, `key`, `keyuntil`, `type`, `shot`, `poweroff`, `boot`,
+`expect-file` (read from the image's C: with mtools). Screen text is matched at all 64 pixel offsets, so text a game
+draws off the 8x8 grid is found.
+
+`tosvm.mjs` holds the QEMU driver shared by `run`, `dist` and `play`.
+
 Needs `qemu-system-x86_64`, `mkfs.fat` and `mcopy` (`apt-get install qemu-system-x86 dosfstools mtools`), and
 `convert` (ImageMagick) for PNG screenshots. The TempleOS ISO is on branch `claude/3d-env-setup-4t39tp` at
 `ISO/TempleOS.ISO` (keep it out of other branches: `git show origin/claude/3d-env-setup-4t39tp:ISO/TempleOS.ISO > TempleOS.ISO`).
@@ -68,5 +96,6 @@ with the letter it reports.
 - The disk carries `.HC .HH .DD .TXT .DAT` only, with names in 8.3; `"disc_exclude"` in `shadw.json` names host-only folders.
 - Screen reading is exact only for text drawn on the 8x8 grid; game graphics read as noise, which is fine for prompts.
 - `--play` scripts are timed, not synchronised: the game clock also runs in real time.
+- `dist` needs the ISO only to build; a bundle does not contain it (the installed disk is TempleOS).
 - The boot ISO is not in this repository. The upstream tree here is source; booting it needs the ISO, which the
   compiler in this tree cannot produce without already running TempleOS.
