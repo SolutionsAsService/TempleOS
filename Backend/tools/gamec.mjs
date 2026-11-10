@@ -14,7 +14,8 @@
 //        --keep             leave the VM running (monitor socket in --out) for driving by hand
 //   node Backend/tools/gamec.mjs dist  <game-dir> [dist-dir] --tos <TempleOS.ISO> [--readme FILE] [--notice FILE] [--cache DIR]
 //        a release bundle: dist-dir/<Name>-<version>/ with <Name>.img (TempleOS installed + the game, starts it at boot),
-//        <Name>-install.img (the game disk for TempleOS users, INSTALL.HC), run.sh, run.bat, README.txt; and a zip beside it.
+//        <Name>-install.img (the game disk for TempleOS users, INSTALL.HC), run.sh, run.bat (QEMU), setup-virtualbox.sh/.bat
+//        (VirtualBox), README.txt, SHA256SUMS.txt; and a zip beside it.
 //        The TempleOS install is made once from the ISO in QEMU (its own VMInstall) and cached (--cache, ~/.cache/gamec).
 //   node Backend/tools/gamec.mjs play  <game-dir> <bundle-dir> --script FILE [--shots DIR] [--seconds N]
 //        boot a bundle with its own run.sh, headless, and drive it with a play script (see tosvm.mjs runPlay):
@@ -34,7 +35,7 @@ import { startVM, runPlay, sleep } from "./tosvm.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LIB = resolve(HERE, "..", "Lib");
-const DISC_EXT = new Set([".HC", ".HH", ".DD", ".TXT", ".DAT"]); // what TempleOS can use from a disc
+const DISC_EXT = new Set([".HC", ".HH", ".DD", ".TXT", ".DAT", ".PRJ"]); // what TempleOS can use from a disc
 
 const [cmd, gameArg, ...rest] = process.argv.slice(2);
 const flag = (n, d) => { const i = rest.indexOf(n); return i >= 0 ? rest[i + 1] : d; };
@@ -512,6 +513,61 @@ if errorlevel 1 (
 )
 `));
 
+// VirtualBox: the same disk, converted on the player's machine by VirtualBox's own tool (VBoxManage convertfromraw), in a VM
+// made to TempleOS's needs: IDE disk on PIIX4 (TempleOS has no AHCI/SATA driver), BIOS, I/O APIC for its cores, VGA, PS/2.
+// VirtualBox does not emulate the PC speaker as sound, so the game is silent there (QEMU plays it).
+// The raw image stays untouched: the VM's disk is <NAME>.vdi beside it, and saves go there.
+const vmName = title;
+writeFileSync(join(BUNDLE, "setup-virtualbox.sh"), `#!/bin/sh
+# ${title} ${ver} -- make a VirtualBox VM from ${NAME}.img and start it (Linux/macOS).  Run once; afterwards start
+# "${vmName}" from VirtualBox (or run this again: it only starts the VM when it exists).
+# Needs VirtualBox 6.1 or 7 (VBoxManage on PATH).  Note: VirtualBox has no PC-speaker sound; use run.sh for sound.
+cd "$(dirname "$0")" || exit 1
+VBM="\${VBOXMANAGE:-VBoxManage}"
+command -v "$VBM" >/dev/null 2>&1 || { echo "VBoxManage was not found: install VirtualBox (virtualbox.org)"; exit 1; }
+if ! "$VBM" showvminfo "${vmName}" >/dev/null 2>&1; then
+  [ -f ${NAME}.vdi ] || "$VBM" convertfromraw ${NAME}.img ${NAME}.vdi --format VDI || exit 1
+  "$VBM" createvm --name "${vmName}" --ostype Other_64 --register || exit 1
+  "$VBM" modifyvm "${vmName}" --memory 1024 --cpus 2 --ioapic on --firmware bios --boot1 disk --boot2 none \\
+    --graphicscontroller vboxvga --vram 16 --mouse ps2 --keyboard ps2 --rtcuseutc off --usb off --audio-enabled off 2>/dev/null \\
+  || "$VBM" modifyvm "${vmName}" --memory 1024 --cpus 2 --ioapic on --firmware bios --boot1 disk --boot2 none \\
+    --graphicscontroller vboxvga --vram 16 --mouse ps2 --keyboard ps2 --rtcuseutc off --usb off --audio none || exit 1
+  "$VBM" storagectl "${vmName}" --name IDE --add ide --controller PIIX4 || exit 1
+  "$VBM" storageattach "${vmName}" --storagectl IDE --port 0 --device 0 --type hdd --medium "$(pwd)/${NAME}.vdi" || exit 1
+fi
+exec "$VBM" startvm "${vmName}"
+`);
+spawnSync("chmod", ["+x", join(BUNDLE, "setup-virtualbox.sh")]);
+writeFileSync(join(BUNDLE, "setup-virtualbox.bat"), crlf(`@echo off
+rem ${title} ${ver} -- make a VirtualBox VM from ${NAME}.img and start it (Windows).  Run once; afterwards start
+rem "${vmName}" from VirtualBox (or run this again: it only starts the VM when it exists).
+rem Needs VirtualBox 6.1 or 7.  Note: VirtualBox has no PC-speaker sound; use run.bat (QEMU) for sound.
+setlocal
+cd /d "%~dp0"
+if not defined VBOXMANAGE set "VBOXMANAGE=%ProgramFiles%\\Oracle\\VirtualBox\\VBoxManage.exe"
+if not exist "%VBOXMANAGE%" (
+  echo VBoxManage.exe was not found. Install VirtualBox from virtualbox.org, or set VBOXMANAGE to its full path.
+  pause
+  exit /b 1
+)
+"%VBOXMANAGE%" showvminfo "${vmName}" >nul 2>&1
+if not errorlevel 1 goto start
+if not exist ${NAME}.vdi "%VBOXMANAGE%" convertfromraw ${NAME}.img ${NAME}.vdi --format VDI || goto fail
+"%VBOXMANAGE%" createvm --name "${vmName}" --ostype Other_64 --register || goto fail
+"%VBOXMANAGE%" modifyvm "${vmName}" --memory 1024 --cpus 2 --ioapic on --firmware bios --boot1 disk --boot2 none --graphicscontroller vboxvga --vram 16 --mouse ps2 --keyboard ps2 --rtcuseutc off --usb off --audio-enabled off 2>nul
+if errorlevel 1 "%VBOXMANAGE%" modifyvm "${vmName}" --memory 1024 --cpus 2 --ioapic on --firmware bios --boot1 disk --boot2 none --graphicscontroller vboxvga --vram 16 --mouse ps2 --keyboard ps2 --rtcuseutc off --usb off --audio none || goto fail
+"%VBOXMANAGE%" storagectl "${vmName}" --name IDE --add ide --controller PIIX4 || goto fail
+"%VBOXMANAGE%" storageattach "${vmName}" --storagectl IDE --port 0 --device 0 --type hdd --medium "%CD%\\${NAME}.vdi" || goto fail
+:start
+"%VBOXMANAGE%" startvm "${vmName}"
+exit /b 0
+:fail
+echo.
+echo Making the VirtualBox VM failed (see the message above).  run.bat with QEMU is the other way to play.
+pause
+exit /b 1
+`));
+
 // README.txt (the game's own text, with {{TITLE}} {{VERSION}} {{NAME}} {{LAUNCH}} filled in) and the TempleOS licence
 const fill = (s) => s.replace(/\{\{TITLE\}\}/g, title).replace(/\{\{VERSION\}\}/g, ver).replace(/\{\{NAME\}\}/g, NAME).replace(/\{\{LAUNCH\}\}/g, launch);
 const readme = flag("--readme");
@@ -533,6 +589,12 @@ TempleOS and is not endorsed by its author; see README.txt for its own licence.
 `));
 const notice = flag("--notice");
 if (notice) copyFileSync(resolve(notice), join(BUNDLE, basename(notice).replace(/(\.txt)?$/i, ".txt")));
+
+{ // SHA256SUMS of every file in the bundle (sha256sum -c SHA256SUMS.txt checks them)
+  const sums = readdirSync(BUNDLE).filter((f) => !f.startsWith(".") && f !== "SHA256SUMS.txt").sort()
+    .map((f) => `${createHash("sha256").update(readFileSync(join(BUNDLE, f))).digest("hex")}  ${f}`);
+  writeFileSync(join(BUNDLE, "SHA256SUMS.txt"), sums.join("\n") + "\n");
+}
 
 // zip ---------------------------------------------------------------------------------------------------
 const zipName = `${NAME}-${ver}.zip`;
