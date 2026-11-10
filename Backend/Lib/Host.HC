@@ -1,7 +1,7 @@
 #help_index "Games/Backend"
 //HOST LINK -- lets a running game talk to the machine that hosts the VM.
 //QEMU option "-serial file:serial.log" turns every byte sent to COM1 into a line in that file.
-//UNVERIFIED: written from the 16550 UART register map, not yet run in TempleOS.
+//Compiled and run by TempleOS V5.03 (gamec run, 2026-11-10): QEMU writes every byte to serial.log.
 
 #define HOST_COM1 0x3F8
 
@@ -33,6 +33,23 @@ U0 HostDone(I64 fails)
     HostLogI("BACKEND_FAIL",fails);
   else
     HostLog("BACKEND_OK");
+}
+
+U0 HostDocDump(CDoc *doc=NULL)
+{//Send the text of a document (default: this task's terminal) to the host, between two marker lines.
+//Compiler errors, warnings and test output all land in the terminal, so this carries them out.
+  I64 size=0;
+  U8 *s,*p;
+  if (!doc)
+    doc=DocPut;
+  s=DocSave(doc,&size);
+  HostLog("BACKEND_DOC_BEGIN");
+  p=s;
+  while (p<s+size && *p)
+    HostPutChar(*p++);
+  HostPutChar('\n');
+  HostLog("BACKEND_DOC_END");
+  Free(s);
 }
 
 #help_index ""

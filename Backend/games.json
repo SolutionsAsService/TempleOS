@@ -2,7 +2,8 @@
   "note": "The registry GDADA manages. One row per game. 'repo' is where the game lives; the backend never copies a game in.",
   "backend": {
     "version": "0.1.0",
-    "runtime_verified": false
+    "runtime_verified": true,
+    "runtime_note": "gamec run, 2026-11-10: TempleOS V5.03 live CD (official ISO) in QEMU 8.2 TCG; Host.HC serial verdict and terminal dump work"
   },
   "games": [
     {
@@ -11,10 +12,10 @@
       "branch": "main",
       "stage": "prototype",
       "host_check": "pass",
-      "compiled_in_templeos": false,
-      "tests_run_in_templeos": false,
-      "next": "boot a TempleOS image and compile Run.HC",
-      "note": "v0.2.0: 12 maps, 9 people; host check pass (22 files, 2909 lines); still never compiled in TempleOS"
+      "compiled_in_templeos": true,
+      "tests_run_in_templeos": true,
+      "next": "play-test the slice: dialogue line width after name substitution, HUD clipping; T1 (drawing) and T2 (keys) still need a person",
+      "note": "2026-11-10: Load.HC compiles in TempleOS V5.03 (0 errors, 19 warnings, about 45 s under TCG); Tests/Auto PASS (T3 FILE, T4 MEM, TWORLD); title, rooms, dialogue, notebook, standoff and a scrolling street drawn at 20-33 FPS"
     }
   ]
 }
