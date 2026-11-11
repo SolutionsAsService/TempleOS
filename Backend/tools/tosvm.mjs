@@ -69,11 +69,11 @@ export function screenTextAll(path) {
 
 // ---- one QEMU, driven through its monitor ------------------------------------------------------------
 // launch: { bin, args } (spawned directly) -- the caller puts "-monitor unix:<sock>,server,nowait" in args.
-export async function startVM({ bin, args, sock, shotDir, keep = false, quiet = false, cwd }) {
+export async function startVM({ bin, args, sock, shotDir, keep = false, quiet = false, cwd, env }) {
   rmSync(sock, { force: true });
   mkdirSync(shotDir, { recursive: true });
   if (!quiet) console.log(`tosvm: ${bin} ${args.join(" ")}`);
-  const qemu = spawn(bin, args, { cwd, stdio: keep ? "ignore" : ["ignore", "inherit", "inherit"], detached: keep });
+  const qemu = spawn(bin, args, { cwd, env: env || process.env, stdio: keep ? "ignore" : ["ignore", "inherit", "inherit"], detached: keep });
   let exited = false; qemu.on("exit", () => { exited = true; });
   const t0 = Date.now(), el = () => ((Date.now() - t0) / 1000).toFixed(0);
 

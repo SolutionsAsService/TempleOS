@@ -12,7 +12,8 @@
 //        --counter NAME     the fail counter to report with --exec
 //        --play FILE        after a PASS, drive the game: lines "type <text>", "key <qemu key> [n]", "wait <s>", "shot <name>"
 //        --keep             leave the VM running (monitor socket in --out) for driving by hand
-//   node Backend/tools/gamec.mjs dist  <game-dir> [dist-dir] --tos <TempleOS.ISO> [--readme FILE] [--notice FILE] [--cache DIR]
+//   node Backend/tools/gamec.mjs dist  <game-dir> [dist-dir] --tos <TempleOS.ISO> [--readme FILE] [--notice FILE] [--license FILE]
+//        [--templeos FILE] [--cache DIR]   (--templeos: the game's own TEMPLEOS.txt, {{ISOHASH}} {{TITLE}} {{NAME}} {{LAUNCH}} filled in)
 //        a release bundle: dist-dir/<Name>-<version>/ with <Name>.img (TempleOS installed + the game, starts it at boot),
 //        <Name>-install.img (the game disk for TempleOS users, INSTALL.HC), run.sh, run.bat (QEMU), setup-virtualbox.sh/.bat
 //        (VirtualBox), README.txt, SHA256SUMS.txt; and a zip beside it.
@@ -20,6 +21,9 @@
 //   node Backend/tools/gamec.mjs play  <game-dir> <bundle-dir> --script FILE [--shots DIR] [--seconds N]
 //        boot a bundle with its own run.sh, headless, and drive it with a play script (see tosvm.mjs runPlay):
 //        waitscreen, key, type, shot, poweroff, boot, expect-file.  Exit 0 only when every expectation held.
+//   node Backend/tools/gamec.mjs steam <game-dir> <bundle-dir> [--out DIR] [--qemu-win DIR] [--qemu-linux system|DIR|none]
+//        Steam depots from a bundle: per-OS content folders (launcher, read-only game disk, empty save disk, QEMU) and SteamPipe
+//        scripts.  See steam.mjs.
 //
 // The compiler is TempleOS's own. This tool never translates HolyC; it only decides whether a tree is fit
 // to be handed to that compiler, and it carries the tree to it.
@@ -41,10 +45,10 @@ const [cmd, gameArg, ...rest] = process.argv.slice(2);
 const flag = (n, d) => { const i = rest.indexOf(n); return i >= 0 ? rest[i + 1] : d; };
 
 function usage() {
-  console.error("usage: gamec check|build|run|dist|play <game-dir> [out.img | dist-dir | bundle-dir] [--tos TempleOS.ISO ...]");
+  console.error("usage: gamec check|build|run|dist|play|steam <game-dir> [out.img | dist-dir | bundle-dir] [--tos TempleOS.ISO ...]");
   process.exit(2);
 }
-if (!["check", "build", "run", "dist", "play"].includes(cmd) || !gameArg) usage();
+if (!["check", "build", "run", "dist", "play", "steam"].includes(cmd) || !gameArg) usage();
 const GAME = resolve(gameArg);
 
 // ---- HolyC lexing, just enough to lint without false hits ---------------------------------------
@@ -137,6 +141,7 @@ if (fails.length) { for (const f of fails) console.log(`  FAIL: ${f}`); console.
 console.log("gamec: check PASS (host rules only; only gamec run asks the TempleOS compiler)");
 if (cmd === "check") process.exit(0);
 if (cmd === "play") process.exit(await playBundle());
+if (cmd === "steam") { const { steamBuild } = await import("./steam.mjs"); process.exit(await steamBuild({ M, rest, flag, mt, cDrive })); }
 
 // ---- build: stage and make the disk --------------------------------------------------------------
 // TempleOS V5.03 cannot read files from an ISO9660 disc (FSt_ISO9660 is "Not Supported": the kernel's
@@ -412,8 +417,38 @@ if (!existsSync(base) || rest.includes("--reinstall")) {
   renameSync(part, base);
 }
 
+// First boot, once, cached: TempleOS unpacks its AutoComplete dictionary (ACDefs.DATA.Z -> ACDefs.DATA, Adam/AutoComplete/ACInit.HC)
+// on the first boot after installing, under an "Uncompressing Dictionary" box that covers the screen for a while.  Done here, a player
+// never sees it -- and the Steam build, whose disk is read only (snapshot=on), would otherwise show it at every start.
+const booted = base.replace(/\.img$/, "-booted.img");
+if (!existsSync(booted) || rest.includes("--reinstall")) {
+  console.log("gamec: first boot of the installed TempleOS (unpacks the AutoComplete dictionary; once, cached)");
+  const part = booted + ".part", sock = join(cacheDir, "firstboot.sock"), shotDir = join(cacheDir, "firstboot-shots");
+  copyFileSync(base, part);
+  const P = cDrive(part), onceTmp0 = join(cacheDir, "Once.HC");
+  writeFileSync(onceTmp0, `//gamec dist: first boot.  Wait until AutoComplete has unpacked its dictionary, then say so.
+Sleep(3000);
+while (Bt(&ac.flags,ACf_INIT_IN_PROGRESS) || !FileFind("::/Adam/AutoComplete/ACDefs.DATA")) Sleep(250);
+Sleep(2000);
+"FIRSTBOOT" "_DONE\\n";;
+`);
+  for (const n of ["Once.HC", "Once.HC.Z"]) mt("mdel", ["-i", P, `::/Home/${n}`], true);
+  mt("mcopy", ["-o", "-i", P, onceTmp0, "::/Home/Once.HC"]);
+  const vm = await startVM({ bin: "qemu-system-x86_64", sock, shotDir, args: ["-m", "1024", "-smp", "2", "-display", "none", "-vga", "std",
+    "-drive", `file=${part},format=raw,if=ide,index=0,media=disk`, "-boot", "c", "-monitor", `unix:${sock},server,nowait`, "-no-reboot", ...kvm] });
+  await sleep(8000); await vm.type("1");   // TempleOS's own boot loader asks 0/1/2 (the shipped image's MBR, below, does not)
+  const ok = await vm.waitScreen(/FIRSTBOOT_DONE/, 900, "dictionary unpacked");
+  await sleep(3000);
+  await vm.quit();
+  if (!ok || mt("mdir", ["-b", "-i", P, "::/Adam/AutoComplete/ACDefs.DATA"], true).status !== 0) {
+    console.error(`gamec: the first boot did not finish; screenshots in ${shotDir}`); process.exit(3);
+  }
+  // the original Once.HC comes back (dist replaces it below anyway)
+  renameSync(part, booted);
+}
+
 const img = join(BUNDLE, `${NAME}.img`);
-copyFileSync(base, img);
+copyFileSync(booted, img);
 // The install leaves TempleOS's master boot loader (BootMHDIns), which waits at "Selection:" for 0, 1 or 2 with no
 // time-out.  A player should type nothing, so the bundle's MBR code (bytes 0..439; the partition table stays) is
 // replaced by this one: load the active partition's first sector (or partition 1's: C:, TempleOS's own boot record,
@@ -573,7 +608,9 @@ const fill = (s) => s.replace(/\{\{TITLE\}\}/g, title).replace(/\{\{VERSION\}\}/
 const readme = flag("--readme");
 writeFileSync(join(BUNDLE, "README.txt"), crlf(fill(readme ? readFileSync(resolve(readme), "utf8")
   : `{{TITLE}} {{VERSION}}\n\nLinux/macOS: ./run.sh     Windows: run.bat     (needs QEMU)\nTempleOS: attach {{NAME}}-install.img, Mount, #include "D:/INSTALL"\n`)));
-writeFileSync(join(BUNDLE, "TEMPLEOS.txt"), crlf(`TempleOS V5.03, in ${NAME}.img
+const templeosText = flag("--templeos");
+if (templeosText) writeFileSync(join(BUNDLE, "TEMPLEOS.txt"), crlf(fill(readFileSync(resolve(templeosText), "utf8")).replace(/\{\{ISOHASH\}\}/g, isoHash)));
+else writeFileSync(join(BUNDLE, "TEMPLEOS.txt"), crlf(`TempleOS V5.03, in ${NAME}.img
 
 ${NAME}.img holds a TempleOS V5.03 installation made by TempleOS's own installer from the official live CD
 (the final release; ISO sha256 prefix ${isoHash}).  TempleOS was written by Terry A. Davis and placed in the
@@ -589,6 +626,8 @@ TempleOS and is not endorsed by its author; see README.txt for its own licence.
 `));
 const notice = flag("--notice");
 if (notice) copyFileSync(resolve(notice), join(BUNDLE, basename(notice).replace(/(\.txt)?$/i, ".txt")));
+const license = flag("--license");
+if (license) writeFileSync(join(BUNDLE, "LICENSE.txt"), crlf(readFileSync(resolve(license), "utf8")));
 
 { // SHA256SUMS of every file in the bundle (sha256sum -c SHA256SUMS.txt checks them)
   const sums = readdirSync(BUNDLE).filter((f) => !f.startsWith(".") && f !== "SHA256SUMS.txt").sort()
