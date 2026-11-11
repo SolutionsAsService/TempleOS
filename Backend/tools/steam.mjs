@@ -118,6 +118,7 @@ if [ -z "$QEMU" ] && [ -x qemu/bin/qemu-system-x86_64 ]; then
   set -- -L "$HERE/qemu/share" "$@"
 fi
 [ -n "$QEMU" ] || QEMU=qemu-system-x86_64
+command -v "$QEMU" >/dev/null 2>&1 || { echo "QEMU was not found. Linux: sudo apt install qemu-system-x86   macOS: brew install qemu"; exit 1; }
 if [ -z "\${HT_ACCEL+x}" ]; then
   HT_ACCEL="-accel tcg"
   [ -r /dev/kvm ] && [ -w /dev/kvm ] && HT_ACCEL="-accel kvm -accel tcg"
@@ -125,7 +126,8 @@ fi
 AUDIO=""
 if [ "\${HT_AUDIO:-}" != none ]; then
   HAVE="$("$QEMU" -audiodev help 2>/dev/null)"
-  for d in \${HT_AUDIO:-pipewire pa alsa sdl}; do
+  PREF="pipewire pa alsa sdl"; [ "$(uname -s)" = Darwin ] && PREF="coreaudio sdl"
+  for d in \${HT_AUDIO:-$PREF}; do
     if printf '%s\\n' "$HAVE" | grep -qx "$d"; then AUDIO="-audiodev $d,id=snd0 -machine pc,pcspk-audiodev=snd0"; break; fi
   done
 fi
@@ -133,7 +135,9 @@ fi
 GAMEIMG="$(printf '%s' "$HERE/${NAME}.img" | sed 's/,/,,/g')"
 SAVEIMG="$(printf '%s' "$DATA/saves.img" | sed 's/,/,,/g')"
 DISPLAY_OPT="sdl"
-"$QEMU" -display help 2>/dev/null | grep -qx gtk && DISPLAY_OPT="gtk,zoom-to-fit=on"
+HAVED="$("$QEMU" -display help 2>/dev/null)"
+if [ "$(uname -s)" = Darwin ] && printf '%s\n' "$HAVED" | grep -qx cocoa; then DISPLAY_OPT="cocoa,zoom-to-fit=on"
+elif printf '%s\n' "$HAVED" | grep -qx gtk; then DISPLAY_OPT="gtk,zoom-to-fit=on"; fi
 # shellcheck disable=SC2086
 exec "$QEMU" -name "${M.title}" -m 1024 -smp 2 $HT_ACCEL -vga std -display "\${HT_DISPLAY:-$DISPLAY_OPT}" -rtc base=localtime $AUDIO -nic none \\
   -drive "file=$GAMEIMG,format=raw,if=ide,index=0,media=disk,snapshot=on" \\

@@ -75,7 +75,15 @@ int WINAPI WinMain(HINSTANCE h, HINSTANCE p, LPSTR cmd, int show) {
   if (GetEnvironmentVariableA("HT_QEMU", qemu, sizeof qemu) == 0)
     snprintf(qemu, sizeof qemu, "%s\\qemu\\qemu-system-x86_64w.exe", dir);   /* the "w" build opens no console */
   if (!exists(qemu)) snprintf(qemu, sizeof qemu, "%s\\qemu\\qemu-system-x86_64.exe", dir);
-  if (!exists(qemu)) fail("QEMU is missing from the game folder.", qemu);
+  if (!exists(qemu)) {   /* not bundled (the itch.io build): the player's own QEMU for Windows, default install folder */
+    char pf[MAX_PATH];
+    if (GetEnvironmentVariableA("ProgramFiles", pf, sizeof pf)) {
+      snprintf(qemu, sizeof qemu, "%s\\qemu\\qemu-system-x86_64w.exe", pf);
+      if (!exists(qemu)) snprintf(qemu, sizeof qemu, "%s\\qemu\\qemu-system-x86_64.exe", pf);
+    }
+  }
+  if (!exists(qemu)) fail("QEMU was not found. Install QEMU for Windows from https://qemu.weilnetz.de/w64/ (default folder), "
+                          "or set HT_QEMU to qemu-system-x86_64.exe.", qemu);
   if (GetEnvironmentVariableA("HT_ACCEL", env, sizeof env)) accel = _strdup(env);
   if (GetEnvironmentVariableA("HT_QEMU_ARGS", env, sizeof env)) extra = _strdup(env);
   if (GetEnvironmentVariableA("HT_AUDIO", env, sizeof env) && !_stricmp(env, "none")) audio = "";
