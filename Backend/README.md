@@ -51,6 +51,13 @@ node Backend/tools/gamec.mjs run   ../ThirdTemple out/temple.img --tos TempleOS.
 #   --play ../ThirdTemple/tools/shots.play
 ```
 
+`gamec run` never writes into the game directory, so it works on a read-only copy. Without `[out.img]` the image goes
+next to the game dir (`<game>/../<id>.img`) and the serial log next to the image. When `$SHADW_ARTIFACT_DIR` is set
+(the SHADW Game Suite's `shadw game test`, which runs it under SHADW Forge with network off) the serial log and
+screenshots default to `$SHADW_ARTIFACT_DIR`, where Forge hashes them, and the image and its staging to the temp dir
+(the image is at least 64 MB, Forge's whole artifact budget); an explicit `[out.img]` or `--out` still wins. QEMU runs
+with `-nic none`: nothing in a test run uses the network.
+
 ### Release bundles: `gamec dist` and `gamec play`
 
 ```

@@ -35,6 +35,7 @@ import { createHash } from "node:crypto";
 import { join, dirname, basename, extname, resolve, relative } from "node:path";
 import { spawnSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { startVM, runPlay, sleep } from "./tosvm.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -160,7 +161,14 @@ const posArg = rest[0] && !rest[0].startsWith("--") ? rest[0] : null;
 const DIST_ROOT = resolve(posArg || join(GAME, "dist"));
 const BUNDLE = join(DIST_ROOT, `${NAME}-${M.version}`);
 if (cmd === "dist") { rmSync(BUNDLE, { recursive: true, force: true }); mkdirSync(BUNDLE, { recursive: true }); }
-const OUT = cmd === "dist" ? join(BUNDLE, `${NAME}-install.img`) : resolve(posArg || join(GAME, "..", `${M.id}.img`));
+// Under SHADW Forge (shadw game test) the game dir is a read-only project copy and results belong in
+// $SHADW_ARTIFACT_DIR, which Forge hashes and exports.  So `run` puts its serial log and screenshots there (--out)
+// and the disk image and its staging in the temp dir Forge gives the workload: the image is at least 64 MB, the
+// whole of Forge's artifact budget.  An explicit [out.img] or --out still wins.  Without the variable: as before.
+const FORGE_OUT = cmd === "run" && process.env.SHADW_ARTIFACT_DIR ? resolve(process.env.SHADW_ARTIFACT_DIR) : null;
+const defaultImg = FORGE_OUT ? join(tmpdir(), `gamec-${M.id}`, `${M.id}.img`) : join(GAME, "..", `${M.id}.img`);
+const OUT = cmd === "dist" ? join(BUNDLE, `${NAME}-install.img`) : resolve(posArg || defaultImg);
+mkdirSync(dirname(OUT), { recursive: true });
 const STAGE = join(dirname(OUT), `.stage-${M.id}`);
 rmSync(STAGE, { recursive: true, force: true });
 
@@ -326,7 +334,7 @@ if (cmd === "run") {
   const seconds = Number(flag("--seconds", "900"));        // the whole run, boot included; no KVM is slow
   const bootSeconds = Number(flag("--boot-seconds", "400"));
   const keep = rest.includes("--keep");                     // leave the VM running for hand driving
-  const runDir = resolve(flag("--out", dirname(OUT)));
+  const runDir = resolve(flag("--out", FORGE_OUT || dirname(OUT)));
   mkdirSync(runDir, { recursive: true });
   const log = join(runDir, `${M.id}.serial.log`);
   const sock = join(runDir, `${M.id}.mon.sock`);
@@ -334,7 +342,8 @@ if (cmd === "run") {
   rmSync(log, { force: true });
   const args = ["-m", "1024", "-smp", "2", "-display", "none", "-vga", "std",
     "-cdrom", tos, "-drive", `file=${OUT},format=raw,index=0,media=disk`, "-boot", "d",
-    "-serial", `file:${log}`, "-monitor", `unix:${sock},server,nowait`, "-no-reboot", ...kvm];
+    "-serial", `file:${log}`, "-monitor", `unix:${sock},server,nowait`, "-no-reboot", "-nic", "none", ...kvm];
+  // -nic none: TempleOS has no network stack, and a test run needs no network (Forge runs it with network off).
   const vm = await startVM({ bin: "qemu-system-x86_64", args, sock, shotDir, keep });
   const t0 = Date.now();
   const serial = () => (existsSync(log) ? readFileSync(log, "latin1") : "");
@@ -366,6 +375,7 @@ if (cmd === "run") {
     .replace(/\$LK,"([^"]*)"(?:,A="FL:([^"]*)")?\$/g, (_, t, a) => `[${a || t.replace(/^FL:/, "")}]`)
     .replace(/\$[^$\n]*\$/g, "").replace(/\u0000/g, "$");
   writeFileSync(log.replace(/\.serial\.log$/, ".serial.txt"), plain);
+  if (FORGE_OUT) rmSync(join(shotDir, "now.ppm"), { force: true }); // tosvm's working screen, not a result
   console.log(plain.trim() || "(serial log empty)");
   let verdict;
   if (/BACKEND_OK/.test(text)) verdict = "PASS";
